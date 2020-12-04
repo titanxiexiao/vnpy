@@ -1,3 +1,5 @@
+## 使用螺纹钢交易的15分钟级别的策略
+
 from vnpy.app.cta_strategy import (
     CtaTemplate,
     StopOrder,
@@ -5,11 +7,10 @@ from vnpy.app.cta_strategy import (
     BarData,
     TradeData,
     OrderData,
-    # BarGenerator,
+    BarGenerator,
     ArrayManager,
 )
 
-from my_generator import MyGenerator  # 导入重写的方法，注释从cta_strategy导入的BarGenerator
 
 class CincoStrategy(CtaTemplate):
     """"""
@@ -55,7 +56,7 @@ class CincoStrategy(CtaTemplate):
         )
 
         # self.bg = BarGenerator(self.on_bar, self.interval, self.on_15min_bar)
-        self.bg = MyGenerator(self.on_bar, self.interval, self.on_15min_bar)
+        self.bg = MyGenerator(self.on_bar, self.interval, self.on_15min_bar)   # 合成15分钟k线
         self.am = ArrayManager()
 
     def on_init(self):
@@ -87,48 +88,48 @@ class CincoStrategy(CtaTemplate):
         """
         Callback of new bar data update.
         """
-        self.bg.update_bar(bar)
+        self.bg.update_bar(bar)     # 推送下一根k线
 
     def on_15min_bar(self, bar: BarData):
         """"""
-        self.cancel_all()
+        self.cancel_all()           # 先取消全部未成交的订单
 
         am = self.am
         am.update_bar(bar)
         if not am.inited:
             return
 
-        self.boll_up, self.boll_down = am.boll(self.boll_window, self.boll_dev)
-        boll_width = self.boll_up - self.boll_down
-
+        self.boll_up, self.boll_down = am.boll(self.boll_window, self.boll_dev)   # 生成bolling带上下轨
+        boll_width = self.boll_up - self.boll_down                                # 计算bolling带宽度
+        ## 空仓时
         if self.pos == 0:
-            atr_fix = am.atr(self.atr_window)
-            self.trading_size = int(self.risk_level / atr_fix)
+            atr_fix = am.atr(self.atr_window)                     # 计算atr指标
+            self.trading_size = int(self.risk_level / atr_fix)    # 根据用风险控制水平除以atr得到开仓量，吗每单固定风险，根据atr调整仓位大小
 
             self.intra_trade_high = bar.high_price
             self.intra_trade_low = bar.low_price
 
-            self.buy(self.boll_up, self.trading_size, True)
-            self.short(self.boll_down, self.trading_size, True)
-
+            self.buy(self.boll_up, self.trading_size, True)        # 在bolling带上轨开多仓
+            self.short(self.boll_down, self.trading_size, True)    # 在bolling带下轨开空仓
+        ## 持有多仓时
         elif self.pos > 0:
-            self.intra_trade_high = max(self.intra_trade_high, bar.high_price)
-            self.intra_trade_low = bar.low_price
+            self.intra_trade_high = max(self.intra_trade_high, bar.high_price)  # 计算持仓以后到达过的最高价
+            self.intra_trade_low = bar.low_price                                # 计算当根k线最低价
 
             self.long_stop = (self.intra_trade_high -
-                              self.trailing_long * boll_width)
-            self.sell(self.long_stop, abs(self.pos), True)
-
+                              self.trailing_long * boll_width)                  # 用最高价回撤bolling带宽度与参数的方式计算追踪止损位置
+            self.sell(self.long_stop, abs(self.pos), True)                      # 在追踪止损位卖出全部持仓
+        ## 当持有空头仓位时
         elif self.pos < 0:
             self.intra_trade_high = bar.high_price
-            self.intra_trade_low = min(self.intra_trade_low, bar.low_price)
+            self.intra_trade_low = min(self.intra_trade_low, bar.low_price)     # 计算持仓后的最低价
 
             self.short_stop = (self.intra_trade_low +
-                               self.trailing_short * boll_width)
-            self.cover(self.short_stop, abs(self.pos), True)
+                               self.trailing_short * boll_width)                # 计算追踪止损位置
+            self.cover(self.short_stop, abs(self.pos), True)                    # 平掉全部空仓
 
-        self.put_event()
-        self.sync_data()
+        self.put_event()                                        # 更新vntrader界面数据
+        self.sync_data()                                        # 将策略运行数据同步保存到本地
 
     def on_order(self, order: OrderData):
         """

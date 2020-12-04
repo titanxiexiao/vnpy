@@ -95,53 +95,53 @@ class SuperComboStrategy(CtaTemplate):
             return
 
         # For a new day, update all entry_range
-        if bar.datetime.day != self.last_bar.datetime.day:
-            self.sum_range = self.day_high - self.day_low
-            self.day_open = bar.open_price
-            self.day_high = bar.high_price
-            self.day_low = bar.low_price
+        if bar.datetime.day != self.last_bar.datetime.day:  # 当根k线的日期不同于上一根k线的日期，即换日了
+            self.sum_range = self.day_high - self.day_low   # 计算日内震幅
+            self.day_open = bar.open_price                  # 赋值当前k线开盘价
+            self.day_high = bar.high_price                  # 计算当根k线最高价
+            self.day_low = bar.low_price                    # 计算当根k线最低价
 
-            long_entry_range = self.thrust_long * self.sum_range
-            self.long_entry = self.day_open + long_entry_range
+            long_entry_range = self.thrust_long * self.sum_range  # 用波幅计算做多开仓点位
+            self.long_entry = self.day_open + long_entry_range    # 开盘价上浮long_entry_range则开仓
 
-            short_entry_range = self.thrust_short * self.sum_range
-            self.short_entry = self.day_open - short_entry_range
+            short_entry_range = self.thrust_short * self.sum_range  # 用波幅计算做空开仓点位
+            self.short_entry = self.day_open - short_entry_range    # 开盘价下浮short_entry_range则开仓
         # Otherwise update daily high/low price
-        else:
-            self.day_high = max(self.day_high, bar.high_price)
-            self.day_low = min(self.day_low, bar.low_price)
+        else:                                                      # 否则，没有换日的情况下
+            self.day_high = max(self.day_high, bar.high_price)     # 记录到过的k线最高价
+            self.day_low = min(self.day_low, bar.low_price)        # 记录到过的k线最低价
 
-            self.long_entry = max(self.long_entry, self.day_high)
-            self.short_entry = min(self.short_entry, self.day_low)
+            self.long_entry = max(self.long_entry, self.day_high)  # 以最高价作为多头开仓点
+            self.short_entry = min(self.short_entry, self.day_low) # 以最低价作为空头开仓点
 
-        # Only open positions before 14:55
+        # Only open positions before 14:55   只在14:55之前开仓
         if bar.datetime.time() < time(14, 55):
-            # No pos
+            # No pos                        没有持仓的情况
             if not self.pos:
-                self.intra_trade_low = bar.low_price
-                self.intra_trade_high = bar.high_price
+                self.intra_trade_low = bar.low_price    # intra_trade_low用来记录持仓后的最低点
+                self.intra_trade_high = bar.high_price  # intra_trade_high用来记录持仓后的最高点
 
-                if bar.close_price > self.day_open:
-                    self.buy(self.long_entry, self.trading_size, True, True)
+                if bar.close_price > self.day_open:     # 当收盘价突破开盘价
+                    self.buy(self.long_entry, self.trading_size, True, True)  # 下多头限价单
                 else:
-                    self.short(self.short_entry, self.trading_size, True, True)
-            # Long pos
+                    self.short(self.short_entry, self.trading_size, True, True)  # 当收盘价未突破开盘价，下空头限价单
+            # Long pos                       持有多头仓位的情况
             elif self.pos > 0:
                 self.intra_trade_high = max(
-                    self.intra_trade_high, bar.high_price)
+                    self.intra_trade_high, bar.high_price)     # 记录买入后的最高价
                 self.long_stop = self.intra_trade_high * \
-                    (1 - self.trailing_long / 100)
-                self.sell(self.long_stop, abs(self.pos), True, True)
-            # Short pos
+                    (1 - self.trailing_long / 100)             # 计算追击止损位，最高价回撤比例
+                self.sell(self.long_stop, abs(self.pos), True, True)  # 在追击止损卖出多头仓位
+            # Short pos                     持有空头仓位的情况
             else:
                 self.intra_trade_low = min(self.intra_trade_low, bar.low_price)
                 self.short_stop = self.intra_trade_low * \
                     (1 + self.trailing_short / 100)
                 self.cover(self.short_stop, abs(self.pos), True, True)
-        # Close all positions after 14:55
+        # Close all positions after 14:55   # 当14:55之后，无论持有多仓还是空头仓，均只卖出，不买入
         else:
             if self.pos > 0:
-                self.sell(bar.close_price - 10, abs(self.pos), True, True)
+                self.sell(bar.close_price - 10, abs(self.pos), True, True)   # 按当根bar收盘价下浮10个bp的基数，卖出全部持仓
             elif self.pos < 0:
                 self.cover(bar.close_price + 10, abs(self.pos), True, True)
 
