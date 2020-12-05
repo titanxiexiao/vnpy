@@ -35,11 +35,10 @@ class CincoStrategy(CtaTemplate):
     intra_trade_low = 0
     long_stop = 0
     short_stop = 0
-    interval = 15
 
     parameters = [
         "boll_window", "boll_dev", "risk_level",
-        "atr_window", "interval",
+        "atr_window", 
         "trailing_short", "trailing_long"
     ]
 
@@ -55,8 +54,8 @@ class CincoStrategy(CtaTemplate):
             cta_engine, strategy_name, vt_symbol, setting
         )
 
-        # self.bg = BarGenerator(self.on_bar, self.interval, self.on_15min_bar)
-        self.bg = MyGenerator(self.on_bar, self.interval, self.on_15min_bar)   # 合成15分钟k线
+        self.bg = BarGenerator(self.on_bar, 15, self.on_15min_bar)
+        # self.bg = MyGenerator(self.on_bar, self.interval, self.on_15min_bar)   # 合成15分钟k线
         self.am = ArrayManager()
 
     def on_init(self):
@@ -108,9 +107,11 @@ class CincoStrategy(CtaTemplate):
 
             self.intra_trade_high = bar.high_price
             self.intra_trade_low = bar.low_price
+            self.long_stop = 0
+            self.short_stop = 0
 
-            self.buy(self.boll_up, self.trading_size, True)        # 在bolling带上轨开多仓
-            self.short(self.boll_down, self.trading_size, True)    # 在bolling带下轨开空仓
+            self.buy(self.boll_up, self.trading_size, stop=True)        # 在bolling带上轨开多仓
+            self.short(self.boll_down, self.trading_size, stop=True)    # 在bolling带下轨开空仓
         ## 持有多仓时
         elif self.pos > 0:
             self.intra_trade_high = max(self.intra_trade_high, bar.high_price)  # 计算持仓以后到达过的最高价
@@ -118,7 +119,7 @@ class CincoStrategy(CtaTemplate):
 
             self.long_stop = (self.intra_trade_high -
                               self.trailing_long * boll_width)                  # 用最高价回撤bolling带宽度与参数的方式计算追踪止损位置
-            self.sell(self.long_stop, abs(self.pos), True)                      # 在追踪止损位卖出全部持仓
+            self.sell(self.long_stop, abs(self.pos), stop=True)                      # 在追踪止损位卖出全部持仓
         ## 当持有空头仓位时
         elif self.pos < 0:
             self.intra_trade_high = bar.high_price
@@ -126,7 +127,7 @@ class CincoStrategy(CtaTemplate):
 
             self.short_stop = (self.intra_trade_low +
                                self.trailing_short * boll_width)                # 计算追踪止损位置
-            self.cover(self.short_stop, abs(self.pos), True)                    # 平掉全部空仓
+            self.cover(self.short_stop, abs(self.pos), stop=True)                    # 平掉全部空仓
 
         self.put_event()                                        # 更新vntrader界面数据
         self.sync_data()                                        # 将策略运行数据同步保存到本地
